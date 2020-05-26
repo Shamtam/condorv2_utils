@@ -47,7 +47,7 @@ register(
     # year
     "2020",
     # label
-    "RGB/Alpha -> DDS",
+    "",
     # image type
     None,
     # input parameters
@@ -140,7 +140,7 @@ register(
     # year
     "2020",
     # label
-    "RGB/Alpha -> DDS",
+    "",
     # image type
     None,
     # input parameters
