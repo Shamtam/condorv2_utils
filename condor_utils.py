@@ -1,9 +1,73 @@
 from gimpfu import *
 from math import pi
 
+import codecs
 import os
 import re
  
+def downsize_dds(filename, size):
+
+    flist = pdb.file_glob(filename, 0)
+
+    for fname in flist[1]:
+        inpath = os.path.abspath(fname)
+        outpath = os.path.splitext(fname)[0] + '.dds'
+
+        img = pdb.file_dds_load(inpath, inpath, 1, 0)
+        drawable = pdb.gimp_image_get_active_layer(img)
+
+        pdb.gimp_context_set_interpolation(2) # cubic interpolation
+
+        pdb.gimp_image_scale(img, size, size)
+
+        pdb.file_dds_save(img, drawable, outpath, outpath, 
+            2, # dxt3 compression
+            1, # mipmaps
+            0, # selected layer
+            0, # format
+            -1, # transparency index
+            8, # kaiser mipmap filter
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        )
+
+        pdb.gimp_image_delete(img)
+
+register(
+    # procedure name in PDB
+    "downsize_dds",
+    # brief description
+    "Downsize a .dds file",
+    # help message
+    "Downsize the square input file to the given dimension. Uses glob patterns for filename input.",
+    # author
+    "Shamit Som",
+    # copyright
+    "Shamit Som",
+    # year
+    "2020",
+    # label
+    "Downsize DDS",
+    # image type
+    None,
+    # input parameters
+    [
+        (PF_STRING, "fname", "fname", None),
+        (PF_INT, "size", "size", 256)
+    ],
+    # output parameters
+    [],
+    # callback
+    downsize_dds,
+    # menu
+    menu='' # command-line usage only
+)
+
 def convert_to_dds(filename):
 
     flist = pdb.file_glob(filename, 0)
@@ -47,7 +111,7 @@ register(
     # year
     "2020",
     # label
-    "",
+    "RGB/Alpha -> DDS",
     # image type
     None,
     # input parameters
@@ -140,7 +204,7 @@ register(
     # year
     "2020",
     # label
-    "",
+    "RGB/Alpha -> DDS",
     # image type
     None,
     # input parameters
@@ -216,10 +280,6 @@ def file_condor_forest_load(filename, raw_filename):
 
     return img
 
-def register_load_handlers():
-    pdb.gimp_register_load_handler('file-condor-forest-load', 'for', '')
-    # pdb.gimp_register_file_handler_mime('file-condor-forest-load', 'image/condorforest')
-
 register(
     # procedure name in PDB
     "file_condor_forest_load",
@@ -234,7 +294,7 @@ register(
     # year
     "2020",
     # label
-    "Import Condor Forest Map and Texture patch",
+    "Condor forest map file (.for)",
     # image type
     None,
     # input parameters
@@ -249,7 +309,7 @@ register(
     # callback
     file_condor_forest_load,
     # load handler
-    on_query=register_load_handlers,
+    on_query=lambda: pdb.gimp_register_load_handler('file-condor-forest-load', 'for', ''),
     # menu
     menu='<Load>'
 )
@@ -298,9 +358,6 @@ def file_condor_forest_save(image, drawable, filename, raw_filename):
         pdb.gimp_message('Unable to export Condor forest map')
         raise
 
-def register_save_handlers():
-    pdb.gimp_register_save_handler('file-condor-forest-save', 'for', '')
-
 register(
     # procedure name in PDB
     "file-condor-forest-save",
@@ -315,7 +372,7 @@ register(
     # year
     "2020",
     # label
-    "Export Condor Forest Map",
+    "Condor forest map file (.for)",
     # image type
     None,
     # input parameters
@@ -330,7 +387,131 @@ register(
     # callback
     file_condor_forest_save,
     # save handler
-    on_query=register_save_handlers,
+    on_query=lambda: pdb.gimp_register_save_handler('file-condor-forest-save', 'for', ''),
+    # menu
+    menu='<Save>',
+)
+
+# thermal map opacity overlaid over texture
+_thermal_opacity = 25.0
+
+def file_condor_thermal_load(filename, raw_filename):
+    # extract and determine filepaths for thermal/texture files
+    thermal_path = os.path.abspath(filename)
+
+    # load thermal map bytes
+    with open(thermal_path, 'rb') as fp:
+        thermal_bytes = fp.read()
+
+    x = int(codecs.encode(thermal_bytes[0:3], 'hex_codec'), 16)
+    y = int(codecs.encode(thermal_bytes[4:7], 'hex_codec'), 16)
+    map_bytes = thermal_bytes[8:]
+
+    # load texture bmp and rename it
+    img = pdb.gimp_image_new(x, y, 1) # 1 = grayscale image
+    layer = pdb.gimp_layer_new(img, x, y, 2, 'thermal', 100.0, 0) # 2 - grayscale
+    img.insert_layer(layer)
+    region = layer.get_pixel_rgn(0, 0, x, y, True, False)
+    region[:,:] = map_bytes
+
+    # rotate layer 180deg
+    pdb.gimp_item_transform_rotate(layer, pi, True, 0, 0)
+
+    return img
+
+register(
+    # procedure name in PDB
+    "file_condor_thermal_load",
+    # brief description
+    "Load Condor thermal map file",
+    # help message
+    "Loads a Condor thermal map file as a grayscale 8bpp image and overlays it as a layer with the viewer map",
+    # author
+    "Shamit Som",
+    # copyright
+    "Shamit Som",
+    # year
+    "2020",
+    # label
+    "Condor thermal map file (.tdm)",
+    # image type
+    None,
+    # input parameters
+    [
+        (PF_STRING, "filename", "filename", None),
+        (PF_STRING, "raw-filename", "raw-filename", None),
+    ],
+    # output parameters
+    [
+        (PF_IMAGE, "image", "image", None),
+    ],
+    # callback
+    file_condor_thermal_load,
+    # load handler
+    on_query=lambda: pdb.gimp_register_load_handler('file-condor-thermal-load', 'tdm', ''),
+    # menu
+    menu='<Load>'
+)
+
+def file_condor_thermal_save(image, drawable, filename, raw_filename):
+    try:
+        # duplicate image
+        img = pdb.gimp_image_duplicate(image)
+        thermal_layer = img.layers[0]
+
+        # rotate layer 180deg
+        pdb.gimp_item_transform_rotate(thermal_layer, pi, True, 0, 0)
+
+        x = pdb.gimp_image_width(image)
+        y = pdb.gimp_image_height(image)
+        x_bytes = codecs.decode('{:08x}'.format(x), 'hex_codec')[::-1]
+        y_bytes = codecs.decode('{:08x}'.format(y), 'hex_codec')[::-1]
+
+        # extract and convert 32bpp to Condor format
+        raw_bytes = thermal_layer.get_pixel_rgn(0, 0, x, y, True, False)[:,:]
+        thermal_bytes = x_bytes + y_bytes + raw_bytes[::2]
+        
+        # save file
+        with open(os.path.abspath(filename), 'wb') as fp:
+            fp.write(thermal_bytes)
+        
+        # delete duplicated image
+        pdb.gimp_image_delete(img)
+
+    except Exception as e:
+        pdb.gimp_message('Unable to export Condor thermal map')
+        raise
+
+register(
+    # procedure name in PDB
+    "file-condor-thermal-save",
+    # brief description
+    "Export a Condor thermal map file",
+    # help message
+    "Exports a Condor thermal map file which was previously loaded into GIMP.",
+    # author
+    "Shamit Som",
+    # copyright
+    "Shamit Som",
+    # year
+    "2020",
+    # label
+    "Condor thermal map file (.tdm)",
+    # image type
+    None,
+    # input parameters
+    [
+        (PF_IMAGE, "image", "image", None),
+        (PF_DRAWABLE, "drawable", "drawable", None),
+        (PF_STRING, "filename", "filename", None),
+        (PF_STRING, "raw-filename", "raw-filename", None),
+    ],
+    # output parameters
+    [],
+    # callback
+    file_condor_thermal_save,
+    # save handler
+    on_query=lambda: pdb.gimp_register_save_handler('file-condor-thermal-save', 'tdm', ''),
     # menu
     menu='<Save>',
 )
